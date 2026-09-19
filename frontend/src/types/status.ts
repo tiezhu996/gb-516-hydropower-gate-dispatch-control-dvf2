@@ -5,6 +5,17 @@ export const ALL_GATE_STATE: readonly GateState[] = ['open', 'closed', 'moving',
 export type DirectiveState = 'draft' | 'pending' | 'approved' | 'executing' | 'completed' | 'aborted';
 export const ALL_DIRECTIVE_STATE: readonly DirectiveState[] = ['draft', 'pending', 'approved', 'executing', 'completed', 'aborted'];
 
+export type PermitState = 'pending' | 'active' | 'revoked' | 'expired' | 'invalidated';
+export const ALL_PERMIT_STATE: readonly PermitState[] = ['pending', 'active', 'revoked', 'expired', 'invalidated'];
+export const PERMIT_DURATION_OPTIONS: ReadonlyArray<{ label: string; value: number }> = [
+  { label: '15 分钟', value: 15 },
+  { label: '30 分钟', value: 30 },
+  { label: '1 小时', value: 60 },
+  { label: '2 小时', value: 120 },
+  { label: '4 小时', value: 240 },
+  { label: '8 小时（当班）', value: 480 },
+];
+
 export const ENTITY_TRANSITIONS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
 	reservoir: { normal: ['warning', 'critical'], warning: ['critical', 'restricted', 'normal'], critical: ['restricted', 'warning'], restricted: ['critical'] },
 	gateUnit: { open: ['moving', 'locked'], closed: ['moving', 'locked'], moving: ['open', 'closed', 'locked'], locked: ['closed'] },

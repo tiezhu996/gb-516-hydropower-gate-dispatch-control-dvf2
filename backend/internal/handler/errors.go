@@ -23,6 +23,10 @@ func handleError(c *gin.Context, err error) {
 		util.Fail(c, http.StatusConflict, "safety_rule", err.Error())
 	case errors.Is(err, service.ErrInvalidTransition), errors.Is(err, service.ErrInvalidInput):
 		util.Fail(c, http.StatusUnprocessableEntity, "business_rule", err.Error())
+	case errors.Is(err, service.ErrPermitConflict):
+		util.Fail(c, http.StatusConflict, "permit_conflict", err.Error())
+	case errors.Is(err, service.ErrPermitNotActive):
+		util.Fail(c, http.StatusUnprocessableEntity, "permit_required", err.Error())
 	default:
 		_ = c.Error(err)
 		util.Fail(c, http.StatusInternalServerError, "internal_error", "request could not be completed")

@@ -3,10 +3,12 @@ package dto
 import "time"
 
 type PageQuery struct {
-	Page     int    `form:"page"`
-	PageSize int    `form:"pageSize"`
-	Search   string `form:"search"`
-	Status   string `form:"status"`
+	Page          int    `form:"page"`
+	PageSize      int    `form:"pageSize"`
+	Search        string `form:"search"`
+	Status        string `form:"status"`
+	DirectiveCode string `form:"directiveCode"`
+	GateCode      string `form:"gateCode"`
 }
 
 type LoginRequest struct {

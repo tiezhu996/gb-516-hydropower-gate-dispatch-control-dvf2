@@ -23,6 +23,14 @@ const STATUS_LABELS: Readonly<Record<string, string>> = {
   cancelled: '已取消',
 };
 
+const PERMIT_STATUS_LABELS: Readonly<Record<string, string>> = {
+  pending: '待签发',
+  active: '生效中',
+  revoked: '已撤销',
+  expired: '已过期',
+  invalidated: '已失效',
+};
+
 const RISK_LABELS: Readonly<Record<string, string>> = {
   low: '低',
   medium: '中',
@@ -31,7 +39,11 @@ const RISK_LABELS: Readonly<Record<string, string>> = {
 };
 
 export function statusLabel(status: string): string {
-  return STATUS_LABELS[status] || status.replaceAll('_', ' ');
+  return STATUS_LABELS[status] || PERMIT_STATUS_LABELS[status] || status.replaceAll('_', ' ');
+}
+
+export function permitStatusLabel(status: string): string {
+  return PERMIT_STATUS_LABELS[status] || statusLabel(status);
 }
 
 export function riskLabel(risk: string): string {

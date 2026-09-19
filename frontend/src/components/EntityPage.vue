@@ -12,9 +12,15 @@ import GateStateBadge from './common/GateStateBadge.vue';
 import MetricCard from './common/MetricCard.vue';
 import DirectiveTimeline from './common/DirectiveTimeline.vue';
 import ConfirmDialog from './common/ConfirmDialog.vue';
+import PermitBadge from './common/PermitBadge.vue';
+import PermitPanel from './common/PermitPanel.vue';
+import { useDispatchPermitStore } from '../stores/dispatch-permit';
+import { formatDate as permitFormatDate } from '../utils/format';
 
 const props = defineProps<{ config: EntityConfig; store: any }>();
 const { session, can } = useAuth();
+const permitStore = useDispatchPermitStore();
+const isDirectivePage = computed(() => props.config.key === 'operationDirective');
 const search = ref('');
 const showCreate = ref(false);
 const pending = ref<{ item: DomainRecord; status: string } | null>(null);
@@ -36,6 +42,14 @@ const pageDescription = computed(() => ({
 
 async function load(): Promise<void> {
   await props.store.load(props.config.path, search.value);
+  if (isDirectivePage.value) {
+    await permitStore.load();
+  }
+}
+
+const permitByDirective = computed(() => permitStore.byDirective);
+function permitFor(item: DomainRecord) {
+  return permitByDirective.value[item.id];
 }
 
 onMounted(() => void load());
@@ -103,7 +117,16 @@ function transitionsFor(item: DomainRecord): readonly string[] {
   return allowedTransitions(props.config.key, item.status).filter((target) => {
     if (props.config.key !== 'operationDirective') return can('operator', 'admin');
 	if (target === 'completed') return false;
-    if (target === 'pending' || target === 'executing' || target === 'completed') return can('operator', 'admin');
+    if (target === 'pending' || target === 'executing' || target === 'completed') {
+      if (!can('operator', 'admin')) return false;
+      // Execution requires an effective, unrevoked, unexpired permit naming
+      // the same gate; the button is unavailable until such a permit exists.
+      if (target === 'executing') {
+        const permit = permitFor(item);
+        return Boolean(permit && permit.effective && !permit.expired && permit.gateCode === item.relatedCode);
+      }
+      return true;
+    }
     if (target === 'approved') return can('reviewer', 'admin') && item.submittedBy !== session.value?.username;
     if (target === 'aborted') return can('operator', 'reviewer', 'admin');
     return false;
@@ -143,6 +166,8 @@ async function confirmTransition(): Promise<void> {
       :kind="config.key"
     />
 
+    <PermitPanel v-if="isDirectivePage" :directives="store.items" />
+
     <section class="toolbar" aria-label="筛选工具栏">
       <el-input v-model="search" :prefix-icon="Search" :placeholder="`搜索${config.label}编码或名称`" clearable @keyup.enter="load" />
       <el-button type="primary" :icon="Search" @click="load">查询</el-button>
@@ -164,6 +189,19 @@ async function confirmTransition(): Promise<void> {
         </el-table-column>
 		<el-table-column v-if="config.key === 'operationDirective'" label="目标状态" width="120">
           <template #default="{ row }"><GateStateBadge :state="row.gateState || 'closed'" /></template>
+        </el-table-column>
+        <el-table-column v-if="isDirectivePage" label="调度许可" min-width="210">
+          <template #default="{ row }">
+            <div v-if="permitFor(row)" class="permit-cell">
+              <PermitBadge :permit="permitFor(row)" />
+              <small v-if="permitFor(row).validUntil" :class="{ 'permit-expired-text': permitFor(row).expired }">
+                至 {{ permitFormatDate(permitFor(row).validUntil) }}
+              </small>
+              <small v-if="permitFor(row).issuedBy" class="muted">签发：{{ permitFor(row).issuedBy }}</small>
+              <small v-if="permitFor(row).revokeReason" class="permit-revoke">{{ permitFor(row).revokeReason }}</small>
+            </div>
+            <span v-else class="muted">{{ row.status === 'approved' ? '未申请许可' : '批准后可申请' }}</span>
+          </template>
         </el-table-column>
 		<el-table-column label="风险" width="80"><template #default="{ row }">{{ riskLabel(row.riskLevel) }}</template></el-table-column>
         <el-table-column prop="owner" label="责任人" min-width="110" />

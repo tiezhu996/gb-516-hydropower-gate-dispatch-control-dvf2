@@ -99,3 +99,23 @@ td small { display: block; color: #7d8d97; margin-top: 4px; }
   .timeline-record { grid-template-columns: 1fr auto; }
   .timeline-record > span { grid-column: 1 / -1; }
 }
+
+/* 闸门调度许可 */
+.permit-badge { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 2px 8px; border: 1px solid #cbd7dc; border-radius: 3px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.permit-badge--active { color: #176c55; background: #e1f4ed; border-color: #9ed5c5; }
+.permit-badge--used { color: #33506b; background: #e4edf5; border-color: #a9c4dd; }
+.permit-badge--pending { color: #8a5a08; background: #fff1ce; border-color: #e7c66e; }
+.permit-badge--expired { color: #9d5a08; background: #fdebd6; border-color: #ecc58f; }
+.permit-badge--closed { color: #9d2c37; background: #fde4e6; border-color: #e6a6ad; }
+.permit-badge--empty { color: #82919a; background: #f2f5f7; font-weight: 500; }
+.permit-cell { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.permit-cell small { font-size: 12px; line-height: 1.35; }
+.permit-window { font-size: 12px; color: #43586a; line-height: 1.45; }
+.permit-expired-text { color: #b45309; font-style: normal; font-weight: 700; }
+.permit-revoke { color: #9d2c37; font-size: 12px; line-height: 1.4; }
+.permit-panel { margin-bottom: 18px; padding: 14px 0 16px; border-top: 1px solid #d5e0e5; border-bottom: 1px solid #d5e0e5; }
+.permit-panel__header { margin-bottom: 11px; }
+.permit-panel__header span { display: block; color: #6d7f8a; font-size: 12px; margin-top: 3px; }
+.permit-panel .el-table small { display: block; color: #6d7f8a; font-size: 11px; }
+.permit-actions { display: flex; gap: 8px; align-items: center; }
+.permit-quick-apply { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }

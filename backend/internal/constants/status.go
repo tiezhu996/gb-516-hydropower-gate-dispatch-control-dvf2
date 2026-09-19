@@ -27,6 +27,32 @@ const (
 
 var AllDirectiveState = []string{"draft", "pending", "approved", "executing", "completed", "aborted"}
 
+// DispatchPermitState governs the time-limited permit that unlocks directive
+// execution. Mirrored in frontend/src/types/status.ts.
+type DispatchPermitState string
+
+const (
+	PermitStatePending     DispatchPermitState = "pending"
+	PermitStateActive      DispatchPermitState = "active"
+	PermitStateRevoked     DispatchPermitState = "revoked"
+	PermitStateExpired     DispatchPermitState = "expired"
+	PermitStateInvalidated DispatchPermitState = "invalidated"
+)
+
+var AllDispatchPermitState = []string{"pending", "active", "revoked", "expired", "invalidated"}
+
+// A pending application becomes active when the reviewer signs it, or dies as
+// invalidated when another application for the same gate wins the slot. An
+// active permit can only be revoked or lazily expired; none of the terminal
+// states ever return to service.
+var DispatchPermitTransitions = map[string]map[string]bool{
+	"pending":     {"active": true, "invalidated": true},
+	"active":      {"revoked": true, "expired": true},
+	"revoked":     {},
+	"expired":     {},
+	"invalidated": {},
+}
+
 var ReservoirTransitions = map[string]map[string]bool{
 	"normal":     {"warning": true, "critical": true},
 	"warning":    {"critical": true, "restricted": true, "normal": true},

@@ -32,14 +32,20 @@ func New(cfg config.Config, db *gorm.DB, redisClient *redis.Client, logger *slog
 	gateUnitRepository := repository.NewGateUnitRepository(db)
 	operationDirectiveRepository := repository.NewOperationDirectiveRepository(db)
 	executionConfirmationRepository := repository.NewExecutionConfirmationRepository(db)
+	dispatchPermitRepository := repository.NewDispatchPermitRepository(db)
 	reservoirService := service.NewReservoirService(reservoirRepository, securityService)
 	gateUnitService := service.NewGateUnitService(gateUnitRepository, reservoirRepository, securityService)
 	operationDirectiveService := service.NewOperationDirectiveService(operationDirectiveRepository, gateUnitRepository, securityService)
+	dispatchPermitService := service.NewDispatchPermitService(dispatchPermitRepository, operationDirectiveRepository, gateUnitRepository, securityService)
+	// Inject the permit gate now that both aggregates are constructed, then
+	// rebuild the directive service so execution enforces a valid permit.
+	operationDirectiveService = service.NewOperationDirectiveService(operationDirectiveRepository, gateUnitRepository, securityService, dispatchPermitService)
 	executionConfirmationService := service.NewExecutionConfirmationService(executionConfirmationRepository, operationDirectiveRepository, gateUnitRepository, securityService)
 	reservoirHandler := handler.NewReservoirHandler(reservoirService)
 	gateUnitHandler := handler.NewGateUnitHandler(gateUnitService)
 	operationDirectiveHandler := handler.NewOperationDirectiveHandler(operationDirectiveService)
 	executionConfirmationHandler := handler.NewExecutionConfirmationHandler(executionConfirmationService)
+	dispatchPermitHandler := handler.NewDispatchPermitHandler(dispatchPermitService)
 	systemHandler := handler.NewSystemHandler(securityService, reservoirService, gateUnitService, operationDirectiveService, executionConfirmationService, db, redisClient)
 
 	engine.GET("/healthz", systemHandler.Health)
@@ -59,6 +65,7 @@ func New(cfg config.Config, db *gorm.DB, redisClient *redis.Client, logger *slog
 	gateUnitHandler.Register(api)
 	operationDirectiveHandler.Register(api)
 	executionConfirmationHandler.Register(api)
+	dispatchPermitHandler.Register(api)
 
 	engine.NoRoute(func(c *gin.Context) {
 		if c.Request.Method == http.MethodOptions {

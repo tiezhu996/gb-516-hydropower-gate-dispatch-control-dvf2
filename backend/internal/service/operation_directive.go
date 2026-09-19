@@ -26,10 +26,15 @@ type operationDirectiveService struct {
 	repository repository.OperationDirectiveRepository
 	gates      repository.GateUnitRepository
 	security   SecurityService
+	permits    ExecutionPermitValidator
 }
 
-func NewOperationDirectiveService(repo repository.OperationDirectiveRepository, gates repository.GateUnitRepository, security SecurityService) OperationDirectiveService {
-	return &operationDirectiveService{repository: repo, gates: gates, security: security}
+func NewOperationDirectiveService(repo repository.OperationDirectiveRepository, gates repository.GateUnitRepository, security SecurityService, permits ...ExecutionPermitValidator) OperationDirectiveService {
+	svc := &operationDirectiveService{repository: repo, gates: gates, security: security}
+	if len(permits) > 0 {
+		svc.permits = permits[0]
+	}
+	return svc
 }
 
 func (s *operationDirectiveService) List(ctx context.Context, query dto.PageQuery) (repository.Page[model.OperationDirective], error) {
@@ -139,13 +144,26 @@ func (s *operationDirectiveService) Transition(ctx context.Context, id uint, inp
 	}
 	var gate *model.GateUnit
 	var gateTarget string
+	var executionPermit *model.DispatchPermit
 	if target == string(constants.DirectiveStateExecuting) || (current.Status == string(constants.DirectiveStateExecuting) && target == string(constants.DirectiveStateAborted)) {
 		linkedGate, gateErr := s.gates.GetByCode(ctx, current.RelatedCode)
 		if gateErr != nil {
 			return model.OperationDirective{}, fmt.Errorf("linked gate %q: %w", current.RelatedCode, gateErr)
 		}
-		if target == string(constants.DirectiveStateExecuting) && linkedGate.Status == string(constants.GateStateLocked) {
-			return model.OperationDirective{}, fmt.Errorf("%w: locked gate cannot execute a directive", ErrInvalidInput)
+		if target == string(constants.DirectiveStateExecuting) {
+			if linkedGate.Status == string(constants.GateStateLocked) {
+				return model.OperationDirective{}, fmt.Errorf("%w: locked gate cannot execute a directive", ErrInvalidInput)
+			}
+			// Safety gate: an approved directive can only start executing
+			// with an effective, unrevoked permit naming this exact gate.
+			if s.permits == nil {
+				return model.OperationDirective{}, fmt.Errorf("%w: dispatch permit enforcement is unavailable", ErrPermitNotActive)
+			}
+			permit, permitErr := s.permits.RequireEffectivePermit(ctx, current.ID, linkedGate.Code)
+			if permitErr != nil {
+				return model.OperationDirective{}, permitErr
+			}
+			executionPermit = &permit
 		}
 		gate = &linkedGate
 		if target == string(constants.DirectiveStateAborted) {
@@ -185,6 +203,14 @@ func (s *operationDirectiveService) Transition(ctx context.Context, id uint, inp
 	if err := s.security.WithinTransaction(ctx, func(txCtx context.Context) error {
 		if err := s.repository.TransitionWithApproval(txCtx, id, input.ExpectedVersion, &current, approval, audit); err != nil {
 			return err
+		}
+		if executionPermit != nil {
+			// Consume the permit in the same commit as the directive and
+			// gate movement; a revoked or expired permit rolls everything
+			// back so the gate never moves without a valid licence.
+			if err := s.permits.ConsumePermit(txCtx, *executionPermit); err != nil {
+				return err
+			}
 		}
 		if gate == nil || gateTarget == "" || gate.Status == gateTarget {
 			return nil

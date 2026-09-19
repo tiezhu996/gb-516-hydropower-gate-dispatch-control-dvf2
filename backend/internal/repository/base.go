@@ -25,6 +25,21 @@ type Store[T any] struct {
 	db *gorm.DB
 }
 
+// IsUniqueViolation reports whether err is a unique-constraint failure. The
+// wording covers both PostgreSQL ("duplicate key value") and the pure-Go
+// SQLite driver ("UNIQUE constraint failed") without importing driver
+// -specific sentinel errors.
+func IsUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "duplicate key") ||
+		strings.Contains(text, "unique constraint failed") ||
+		strings.Contains(text, "unique violation") ||
+		strings.Contains(text, "duplicate entry")
+}
+
 type transactionContextKey struct{}
 
 func databaseForContext(ctx context.Context, fallback *gorm.DB) *gorm.DB {
