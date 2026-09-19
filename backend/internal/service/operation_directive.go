@@ -25,11 +25,12 @@ type OperationDirectiveService interface {
 type operationDirectiveService struct {
 	repository repository.OperationDirectiveRepository
 	gates      repository.GateUnitRepository
+	permits    GateDispatchPermitService
 	security   SecurityService
 }
 
-func NewOperationDirectiveService(repo repository.OperationDirectiveRepository, gates repository.GateUnitRepository, security SecurityService) OperationDirectiveService {
-	return &operationDirectiveService{repository: repo, gates: gates, security: security}
+func NewOperationDirectiveService(repo repository.OperationDirectiveRepository, gates repository.GateUnitRepository, permits GateDispatchPermitService, security SecurityService) OperationDirectiveService {
+	return &operationDirectiveService{repository: repo, gates: gates, permits: permits, security: security}
 }
 
 func (s *operationDirectiveService) List(ctx context.Context, query dto.PageQuery) (repository.Page[model.OperationDirective], error) {
@@ -180,9 +181,35 @@ func (s *operationDirectiveService) Transition(ctx context.Context, id uint, inp
 	}
 	current.Version = input.ExpectedVersion + 1
 	current.UpdatedAt = now
+	if target == string(constants.DirectiveStateExecuting) {
+		// The permit guard runs before the state transaction: valid,
+		// non-revoked and same gate. An observed expiry is committed on its
+		// own so the rejected execution still records and releases the gate.
+		if err := s.permits.ValidateForExecution(ctx, id, current.RelatedCode, actor, requestID); err != nil {
+			return model.OperationDirective{}, err
+		}
+	}
 	audit := &model.AuditLog{Actor: actor, RequestID: requestID, Action: "transition", EntityType: "OperationDirective", EntityID: id,
 		BeforeState: before, AfterState: target, Detail: input.Reason, CreatedAt: now}
 	if err := s.security.WithinTransaction(ctx, func(txCtx context.Context) error {
+		if target == string(constants.DirectiveStateExecuting) {
+			// Read-only re-check inside the state transaction: a revoke or
+			// expiry committed between the outer check and this point aborts
+			// the whole transition, including gate movement.
+			if err := s.permits.AssertExecutable(txCtx, id, current.RelatedCode); err != nil {
+				return err
+			}
+		}
+		if target == string(constants.DirectiveStateAborted) && before == string(constants.DirectiveStateApproved) {
+			if err := s.permits.CloseForDirective(txCtx, id, "指令在执行前被中止，调度许可终止", actor, requestID); err != nil {
+				return err
+			}
+		}
+		if target == string(constants.DirectiveStateAborted) && before == string(constants.DirectiveStateExecuting) {
+			if err := s.permits.CloseForDirective(txCtx, id, "指令执行过程中被中止，已执行操作不倒退，许可终止", actor, requestID); err != nil {
+				return err
+			}
+		}
 		if err := s.repository.TransitionWithApproval(txCtx, id, input.ExpectedVersion, &current, approval, audit); err != nil {
 			return err
 		}

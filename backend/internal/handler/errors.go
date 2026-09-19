@@ -15,8 +15,12 @@ func handleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		util.Fail(c, http.StatusNotFound, "not_found", "record was not found")
-	case errors.Is(err, repository.ErrVersionConflict):
+	case errors.Is(err, repository.ErrVersionConflict), errors.Is(err, repository.ErrPermitStateChanged):
 		util.Fail(c, http.StatusConflict, "version_conflict", "record changed; refresh and retry")
+	case errors.Is(err, service.ErrPermitConflict), errors.Is(err, service.ErrPermitStateChange):
+		util.Fail(c, http.StatusConflict, "permit_conflict", err.Error())
+	case errors.Is(err, service.ErrPermitRequired):
+		util.Fail(c, http.StatusUnprocessableEntity, "permit_required", err.Error())
 	case errors.Is(err, service.ErrForbidden):
 		util.Fail(c, http.StatusForbidden, "forbidden", err.Error())
 	case errors.Is(err, service.ErrTwoPersonRequired), errors.Is(err, service.ErrImmutableState):

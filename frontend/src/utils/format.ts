@@ -30,12 +30,32 @@ const RISK_LABELS: Readonly<Record<string, string>> = {
   critical: '极高',
 };
 
+const PERMIT_STATUS_LABELS: Readonly<Record<string, string>> = {
+  pending: '待签发',
+  issued: '生效中',
+  superseded: '已失效',
+  revoked: '已撤销',
+  expired: '已过期',
+  terminated: '已终止',
+};
+
 export function statusLabel(status: string): string {
   return STATUS_LABELS[status] || status.replaceAll('_', ' ');
 }
 
 export function riskLabel(risk: string): string {
   return RISK_LABELS[risk] || risk;
+}
+
+export function permitStatusLabel(status: string): string {
+  return PERMIT_STATUS_LABELS[status] || status;
+}
+
+export function permitStatusTone(status: string): 'success' | 'warning' | 'danger' | 'neutral' {
+  if (status === 'issued') return 'success';
+  if (status === 'pending') return 'warning';
+  if (status === 'revoked' || status === 'expired') return 'danger';
+  return 'neutral';
 }
 
 export function nextStatus(current: string, statuses: readonly string[]): string | null {

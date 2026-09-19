@@ -32,14 +32,17 @@ func New(cfg config.Config, db *gorm.DB, redisClient *redis.Client, logger *slog
 	gateUnitRepository := repository.NewGateUnitRepository(db)
 	operationDirectiveRepository := repository.NewOperationDirectiveRepository(db)
 	executionConfirmationRepository := repository.NewExecutionConfirmationRepository(db)
+	gateDispatchPermitRepository := repository.NewGateDispatchPermitRepository(db)
 	reservoirService := service.NewReservoirService(reservoirRepository, securityService)
 	gateUnitService := service.NewGateUnitService(gateUnitRepository, reservoirRepository, securityService)
-	operationDirectiveService := service.NewOperationDirectiveService(operationDirectiveRepository, gateUnitRepository, securityService)
-	executionConfirmationService := service.NewExecutionConfirmationService(executionConfirmationRepository, operationDirectiveRepository, gateUnitRepository, securityService)
+	gateDispatchPermitService := service.NewGateDispatchPermitService(gateDispatchPermitRepository, operationDirectiveRepository, gateUnitRepository, securityService)
+	operationDirectiveService := service.NewOperationDirectiveService(operationDirectiveRepository, gateUnitRepository, gateDispatchPermitService, securityService)
+	executionConfirmationService := service.NewExecutionConfirmationService(executionConfirmationRepository, operationDirectiveRepository, gateUnitRepository, gateDispatchPermitService, securityService)
 	reservoirHandler := handler.NewReservoirHandler(reservoirService)
 	gateUnitHandler := handler.NewGateUnitHandler(gateUnitService)
 	operationDirectiveHandler := handler.NewOperationDirectiveHandler(operationDirectiveService)
 	executionConfirmationHandler := handler.NewExecutionConfirmationHandler(executionConfirmationService)
+	gateDispatchPermitHandler := handler.NewGateDispatchPermitHandler(gateDispatchPermitService)
 	systemHandler := handler.NewSystemHandler(securityService, reservoirService, gateUnitService, operationDirectiveService, executionConfirmationService, db, redisClient)
 
 	engine.GET("/healthz", systemHandler.Health)
@@ -58,6 +61,7 @@ func New(cfg config.Config, db *gorm.DB, redisClient *redis.Client, logger *slog
 	reservoirHandler.Register(api)
 	gateUnitHandler.Register(api)
 	operationDirectiveHandler.Register(api)
+	gateDispatchPermitHandler.Register(api)
 	executionConfirmationHandler.Register(api)
 
 	engine.NoRoute(func(c *gin.Context) {

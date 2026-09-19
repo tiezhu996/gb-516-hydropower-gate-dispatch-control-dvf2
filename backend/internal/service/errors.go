@@ -10,4 +10,7 @@ var (
 	ErrImmutableState    = errors.New("record can no longer be edited in its current state")
 	ErrUnauthorized      = errors.New("invalid username or password")
 	ErrInactiveUser      = errors.New("user account is inactive")
+	ErrPermitRequired    = errors.New("directive execution requires a valid gate dispatch permit")
+	ErrPermitConflict    = errors.New("gate dispatch permit conflicts with an effective permit")
+	ErrPermitStateChange = errors.New("gate dispatch permit was changed by another request")
 )

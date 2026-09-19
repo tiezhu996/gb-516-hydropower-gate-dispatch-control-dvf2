@@ -40,6 +40,34 @@ export interface DirectiveApproval {
 	createdAt: string;
 }
 
+export type GateDispatchPermitStatus = 'pending' | 'issued' | 'superseded' | 'revoked' | 'expired' | 'terminated';
+
+export interface GateDispatchPermit {
+	id: number;
+	code: string;
+	directiveId: number;
+	directiveCode: string;
+	gateCode: string;
+	status: GateDispatchPermitStatus;
+	displayStatus: GateDispatchPermitStatus;
+	expired: boolean;
+	requestedBy: string;
+	requestedAt: string;
+	requestReason: string;
+	validFrom: string;
+	validUntil: string;
+	issuedBy?: string;
+	issuedAt?: string;
+	issueReason?: string;
+	revokedBy?: string;
+	revokedAt?: string;
+	revokeReason?: string;
+	closeReason?: string;
+	version: number;
+	createdAt: string;
+	updatedAt: string;
+}
+
 export interface PageMeta { page: number; pageSize: number; total: number }
 export interface ApiEnvelope<T> { data: T; error?: string; message?: string; meta?: PageMeta }
 export interface UserSession { token: string; username: string; displayName: string; role: string; expiresIn: number; expiresAt: number }

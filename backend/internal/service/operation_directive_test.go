@@ -27,7 +27,7 @@ func newDirectiveService(t *testing.T) (OperationDirectiveService, *gorm.DB) {
 		t.Fatalf("database handle: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.GateUnit{}, &model.OperationDirective{}, &model.DirectiveApproval{}, &model.AuditLog{}); err != nil {
+	if err := db.AutoMigrate(&model.GateUnit{}, &model.OperationDirective{}, &model.DirectiveApproval{}, &model.AuditLog{}, &model.GateDispatchPermit{}); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}
 	gate := model.GateUnit{BaseModel: model.BaseModel{Code: "GU-TEST", Name: "右岸泄洪闸", Status: "closed", Version: 1}, Facility: "右岸坝段", Owner: "运行一组"}
@@ -35,7 +35,8 @@ func newDirectiveService(t *testing.T) (OperationDirectiveService, *gorm.DB) {
 		t.Fatalf("create test gate: %v", err)
 	}
 	security := NewSecurityService(repository.NewSecurityRepository(db), config.Config{})
-	return NewOperationDirectiveService(repository.NewOperationDirectiveRepository(db), repository.NewGateUnitRepository(db), security), db
+	permitService := NewGateDispatchPermitService(repository.NewGateDispatchPermitRepository(db), repository.NewOperationDirectiveRepository(db), repository.NewGateUnitRepository(db), security)
+	return NewOperationDirectiveService(repository.NewOperationDirectiveRepository(db), repository.NewGateUnitRepository(db), permitService, security), db
 }
 
 func directiveInput(code string) dto.CreateOperationDirective {

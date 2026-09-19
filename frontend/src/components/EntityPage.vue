@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { Plus, Refresh, Search } from '@element-plus/icons-vue';
-import type { DomainRecord, EntityConfig } from '../types/domain';
+import type { DomainRecord, EntityConfig, GateDispatchPermit } from '../types/domain';
 import { allowedTransitions } from '../types/status';
 import { formatDate, riskLabel, statusLabel } from '../utils/format';
 import { useAuth } from '../hooks/useAuth';
 import { usePolling } from '../hooks/usePolling';
 import { request } from '../api/client';
+import { listGateDispatchPermits } from '../api/gate-dispatch-permit';
 import StatusBadge from './common/StatusBadge.vue';
 import GateStateBadge from './common/GateStateBadge.vue';
 import MetricCard from './common/MetricCard.vue';
 import DirectiveTimeline from './common/DirectiveTimeline.vue';
 import ConfirmDialog from './common/ConfirmDialog.vue';
+import PermitPanel from './common/PermitPanel.vue';
 
 const props = defineProps<{ config: EntityConfig; store: any }>();
 const { session, can } = useAuth();
@@ -20,6 +22,9 @@ const showCreate = ref(false);
 const pending = ref<{ item: DomainRecord; status: string } | null>(null);
 const transitionReason = ref('');
 const relatedOptions = ref<DomainRecord[]>([]);
+const activePermits = reactive(new Map<string, GateDispatchPermit>());
+const latestPermits = reactive(new Map<string, GateDispatchPermit>());
+const isDirectiveWorkbench = computed(() => props.config.key === 'operationDirective');
 const createForm = reactive({
   code: '', name: '', description: '', facility: '', owner: '', category: '',
   riskLevel: 'medium', metricValue: 0, metricUnit: '%', evidence: '', relatedCode: '', gateState: 'closed',
@@ -30,12 +35,32 @@ const canCreate = computed(() => can('operator', 'admin'));
 const pageDescription = computed(() => ({
   reservoir: '监控水位阈值与许可窗口，为调度决策提供约束。',
   gateUnit: '查看闸门实时状态，所有开闭动作必须经过中间态。',
-  operationDirective: '编排闸门指令，并由不同账号完成提交与安全复核。',
+  operationDirective: '编排闸门指令，由不同账号完成提交与复核；执行前必须持有有效、未撤销且闸门一致的限时调度许可。',
   executionConfirmation: '记录现场执行结果、证据及关联操作指令。',
 }[props.config.key] || `管理${props.config.label}状态、风险与责任人。`));
 
 async function load(): Promise<void> {
   await props.store.load(props.config.path, search.value);
+  if (isDirectiveWorkbench.value) {
+    await loadPermits();
+  }
+}
+
+async function loadPermits(): Promise<void> {
+  try {
+    const result = await listGateDispatchPermits();
+    activePermits.clear();
+    latestPermits.clear();
+    for (const permit of result.data) {
+      const key = permit.directiveCode;
+      if (!latestPermits.has(key)) latestPermits.set(key, permit);
+      if (permit.status === 'issued' && !permit.expired && !activePermits.has(key)) {
+        activePermits.set(key, permit);
+      }
+    }
+  } catch {
+    // Permit enrichment must not break the directive list; the panel reloads on open.
+  }
 }
 
 onMounted(() => void load());
@@ -103,18 +128,38 @@ function transitionsFor(item: DomainRecord): readonly string[] {
   return allowedTransitions(props.config.key, item.status).filter((target) => {
     if (props.config.key !== 'operationDirective') return can('operator', 'admin');
 	if (target === 'completed') return false;
-    if (target === 'pending' || target === 'executing' || target === 'completed') return can('operator', 'admin');
+    if (target === 'executing') {
+      // Execution is offered only while a valid, non-revoked permit for the
+      // same gate is effective; revoked or expired permits block the action.
+      return can('operator', 'admin') && Boolean(activePermits.get(item.code));
+    }
+    if (target === 'pending') return can('operator', 'admin');
     if (target === 'approved') return can('reviewer', 'admin') && item.submittedBy !== session.value?.username;
     if (target === 'aborted') return can('operator', 'reviewer', 'admin');
     return false;
   });
 }
 
+function permitBlockReason(item: DomainRecord): string {
+  if (props.config.key !== 'operationDirective' || item.status !== 'approved') return '';
+  const latest = latestPermits.get(item.code);
+  if (activePermits.get(item.code)) return '';
+  if (!latest) return '缺少生效调度许可，禁止执行';
+  if (latest.status === 'pending') return '许可待复核员签发';
+  if (latest.status === 'revoked') return `许可已撤销：${latest.revokeReason || ''}`;
+  if (latest.expired || latest.status === 'expired') return '许可已过期，禁止执行';
+  if (latest.status === 'superseded') return '同闸门待审申请已失效';
+  if (latest.status === 'terminated') return '许可已终止';
+  return '缺少生效调度许可，禁止执行';
+}
+
 function selectTransition(item: DomainRecord, status: string): void {
   pending.value = { item, status };
   transitionReason.value = status === 'approved'
     ? '已复核闸门目标、水位窗口、设备闭锁和现场证据'
-    : `值班人员确认将状态由 ${item.status} 推进至 ${status}`;
+    : status === 'executing'
+      ? '持有效闸门调度许可，校验许可与闸门一致后开始执行'
+      : `值班人员确认将状态由 ${item.status} 推进至 ${status}`;
 }
 
 async function confirmTransition(): Promise<void> {
@@ -170,6 +215,14 @@ async function confirmTransition(): Promise<void> {
 		<el-table-column v-if="['gateUnit', 'operationDirective', 'executionConfirmation'].includes(config.key)" prop="relatedCode" :label="relationLabel" width="130" />
         <el-table-column label="指标" width="105"><template #default="{ row }">{{ row.metricValue }} {{ row.metricUnit }}</template></el-table-column>
         <el-table-column label="更新时间" width="165"><template #default="{ row }">{{ formatDate(row.updatedAt) }}</template></el-table-column>
+        <el-table-column v-if="isDirectiveWorkbench" label="调度许可" width="230">
+          <template #default="{ row }">
+            <div class="permit-cell">
+              <PermitPanel :directive="row" @changed="loadPermits" />
+              <small v-if="permitBlockReason(row)" class="permit-cell__block">{{ permitBlockReason(row) }}</small>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" min-width="220" fixed="right">
           <template #default="{ row }">
             <div v-if="transitionsFor(row).length" class="row-actions">

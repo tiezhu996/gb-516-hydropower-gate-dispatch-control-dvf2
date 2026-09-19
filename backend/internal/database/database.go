@@ -82,6 +82,7 @@ func migrate(db *gorm.DB) error {
 		&model.OperationDirective{},
 		&model.DirectiveApproval{},
 		&model.ExecutionConfirmation{},
+		&model.GateDispatchPermit{},
 	)
 }
 
@@ -127,6 +128,10 @@ func Seed(ctx context.Context, db *gorm.DB, cfg config.Config) error {
 	}
 
 	if err := seedExecutionConfirmation(ctx, db); err != nil {
+		return err
+	}
+
+	if err := seedGateDispatchPermit(ctx, db); err != nil {
 		return err
 	}
 
@@ -236,4 +241,28 @@ func seedExecutionConfirmation(ctx context.Context, db *gorm.DB) error {
 		MetricValue: 37.5, MetricUnit: "%", EffectiveAt: now, Evidence: "待现场核对开度反馈、视频与水位变化", RelatedCode: "OD-003",
 	}}
 	return db.WithContext(ctx).Create(&items).Error
+}
+
+func seedGateDispatchPermit(ctx context.Context, db *gorm.DB) error {
+	var count int64
+	if err := db.WithContext(ctx).Model(&model.GateDispatchPermit{}).Count(&count).Error; err != nil || count > 0 {
+		return err
+	}
+	var directive model.OperationDirective
+	if err := db.WithContext(ctx).Where("code = ?", "OD-003").First(&directive).Error; err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	requestedAt := now.Add(-45 * time.Minute)
+	issuedAt := now.Add(-40 * time.Minute)
+	activeGate := "GU-003"
+	permit := model.GateDispatchPermit{
+		Code: "GDP-001", DirectiveID: directive.ID, DirectiveCode: directive.Code,
+		GateCode: "GU-003", ActiveGateKey: &activeGate, Status: "issued",
+		RequestedBy: "operator", RequestedAt: requestedAt, RequestReason: "已批准指令限时执行申请",
+		ValidFrom: issuedAt, ValidUntil: now.Add(80 * time.Minute),
+		IssuedBy: "reviewer", IssuedAt: &issuedAt, IssueReason: "闸门无生效许可且指令已批准，限时签发",
+		Version: 2, CreatedAt: requestedAt, UpdatedAt: issuedAt,
+	}
+	return db.WithContext(ctx).Create(&permit).Error
 }

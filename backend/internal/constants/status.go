@@ -27,6 +27,27 @@ const (
 
 var AllDirectiveState = []string{"draft", "pending", "approved", "executing", "completed", "aborted"}
 
+// PermitState drives the 闸门调度许可 lifecycle. Only "issued" permits can gate
+// execution; "superseded" marks pending applications that were still waiting
+// when another application for the same gate was issued.
+type PermitState string
+
+const (
+	PermitStatePending    PermitState = "pending"
+	PermitStateIssued     PermitState = "issued"
+	PermitStateSuperseded PermitState = "superseded"
+	PermitStateRevoked    PermitState = "revoked"
+	PermitStateExpired    PermitState = "expired"
+	PermitStateTerminated PermitState = "terminated"
+)
+
+var AllPermitState = []string{"pending", "issued", "superseded", "revoked", "expired", "terminated"}
+
+// PermitActiveState is the single state that occupies a gate. GateDispatchPermit
+// uses a unique index on (gate_code, active_gate_key) where active_gate_key is
+// non-empty only for issued permits.
+const PermitActiveState = "issued"
+
 var ReservoirTransitions = map[string]map[string]bool{
 	"normal":     {"warning": true, "critical": true},
 	"warning":    {"critical": true, "restricted": true, "normal": true},

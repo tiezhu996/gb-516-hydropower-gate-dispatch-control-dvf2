@@ -26,11 +26,12 @@ type executionConfirmationService struct {
 	repository repository.ExecutionConfirmationRepository
 	directives repository.OperationDirectiveRepository
 	gates      repository.GateUnitRepository
+	permits    GateDispatchPermitService
 	security   SecurityService
 }
 
-func NewExecutionConfirmationService(repo repository.ExecutionConfirmationRepository, directives repository.OperationDirectiveRepository, gates repository.GateUnitRepository, security SecurityService) ExecutionConfirmationService {
-	return &executionConfirmationService{repository: repo, directives: directives, gates: gates, security: security}
+func NewExecutionConfirmationService(repo repository.ExecutionConfirmationRepository, directives repository.OperationDirectiveRepository, gates repository.GateUnitRepository, permits GateDispatchPermitService, security SecurityService) ExecutionConfirmationService {
+	return &executionConfirmationService{repository: repo, directives: directives, gates: gates, permits: permits, security: security}
 }
 
 func (s *executionConfirmationService) List(ctx context.Context, query dto.PageQuery) (repository.Page[model.ExecutionConfirmation], error) {
@@ -170,6 +171,16 @@ func (s *executionConfirmationService) Transition(ctx context.Context, id uint, 
 		}
 		if directiveTarget == "" {
 			return nil
+		}
+		// The permit is consumed when the directive outcome is recorded.
+		// Completed/failed execution is never rolled back; termination only
+		// releases the gate for future directives and records the reason.
+		permitReason := "指令执行回执已确认，调度许可随指令完成而终止"
+		if directiveTarget == string(constants.DirectiveStateAborted) {
+			permitReason = "执行回执判定失败并中止指令，已执行操作不倒退，许可终止"
+		}
+		if err := s.permits.CloseForDirective(txCtx, directive.ID, permitReason, actor, requestID); err != nil {
+			return err
 		}
 		directiveBefore := directive.Status
 		directive.Status = directiveTarget

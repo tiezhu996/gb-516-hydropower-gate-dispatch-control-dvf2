@@ -38,6 +38,7 @@ docker compose down -v --remove-orphans
 | 库区 | `Reservoir` | `/api/reservoirs` | normal, warning, critical, restricted |
 | 闸门 | `GateUnit` | `/api/gates` | open, closed, moving, locked |
 | 操作指令 | `OperationDirective` | `/api/directives` | draft, pending, approved, executing, completed, aborted |
+| 闸门调度许可 | `GateDispatchPermit` | `/api/permits` | pending, issued, superseded, revoked, expired, terminated |
 | 执行确认 | `ExecutionConfirmation` | `/api/confirmations` | pending, confirmed, failed, cancelled |
 
 - JWT 登录和 viewer/operator/reviewer/admin 四级 RBAC；写接口在 Gin 路由层再次校验角色。
@@ -46,6 +47,8 @@ docker compose down -v --remove-orphans
 - 所有状态变化使用乐观锁，并将业务状态、审批证据和不可覆盖审计日志放在同一个数据库事务中。
 - 库区、闸门、指令和执行回执逐级校验权威关联；不存在、跨区域或闭锁的对象不能进入下游流程。
 - 指令开始执行时闸门原子进入 `moving`；成功回执同时完成指令并落定目标闸位，失败回执同时中止指令并闭锁闸门。
+- 闸门调度许可：操作员只能对**已批准**指令为同一闸门申请限时许可；复核员仅在闸门无生效许可时签发（申请、签发账号必须不同）。每个闸门至多一份生效许可，签发原子作废同闸门其他待审申请；重复签发、并发抢占、跨闸门申请只会成功一次，数据库唯一索引 `idx_permit_active` 兜底。
+- 执行前在事务内外双重校验许可**有效、未撤销且闸门一致**；撤销或过期一律禁止执行，过期在观察到时落库并释放闸门。指令中止/回执完成后许可终止并记录原因，已执行指令不倒退。全部许可事件写入审计（`permit_apply/issue/revoke/expire/terminate/supersede`）。
 - 请求 ID、结构化日志、全局错误映射和 Redis 分布式限流。
 - 提供脱敏运行配置、当前会话、审计汇总和单实体审计历史接口。
 - 业务工作台支持查询、新建、状态推进、风险标识及操作审计查看。
@@ -125,6 +128,7 @@ cd .. && docker compose config --quiet
 |---|---|---|
 | `GateState` | `open, closed, moving, locked` | `backend/internal/constants/status.go`、`frontend/src/types/status.ts`、`frontend/src/components/common/GateStateBadge.vue` |
 | `DirectiveState` | `draft, pending, approved, executing, completed, aborted` | `backend/internal/constants/status.go`、`frontend/src/types/status.ts`、`frontend/src/components/common/DirectiveTimeline.vue` |
+| `PermitState` | `pending, issued, superseded, revoked, expired, terminated` | `backend/internal/constants/status.go`、`frontend/src/types/domain.ts`、`frontend/src/components/common/PermitStatusBadge.vue`、`frontend/src/components/common/PermitPanel.vue` |
 
 每个实体自己的完整迁移图同样位于 `backend/internal/constants/status.go`；页面使用的状态列表位于 `frontend/src/types/status.ts`。修改状态时必须同步两处并更新对应服务测试。
 
